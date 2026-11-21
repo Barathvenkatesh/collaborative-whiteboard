@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Collaborative Whiteboard - Hackathon 2026</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg: #0f0f23;
+            --card: #1e1e3a;
+            --accent: #f472b6;
+            --text: #f8fafc;
+            --muted: #64748b;
+            --success: #22c55e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .bg-layer {
+            position: fixed;
+            inset: 0;
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(244, 114, 182, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 50% 30% at 40% 60%, rgba(34, 197, 94, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .noise {
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .content {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Left panel - tools */
+        .tools-panel {
+            width: 260px;
+            background: var(--card);
+            border-left: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 2rem;
+            overflow-y: auto;
+            height: 100vh;
+        }
+
+        .panel-section {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--muted);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .section-title i {
+            margin-right: 0.5rem;
+            color: var(--primary);
+        }
+
+        /* Color palette */
+        .color-palette {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .color-btn {
+            width: 36px;
+            height: 36px;
+            border: 2px solid var(--bg);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .color-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .color-btn.selected {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }
+
+        .color-btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), transparent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .color-btn.selected::after {
+            opacity: 1;
+        }
+
+        /* Eraser */
+        .eraser-btn {
+            width: 36px;
+            height: 36px;
+            border: 2px solid var(--bg);
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .eraser-btn:hover {
+            background: #ff6b6b;
+            transform: scale(1.1);
+        }
+
+        .eraser-btn.selected {
+            background: #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .eraser-btn.selected svg {
+            stroke: white;
+        }
+
+        /* Brush size */
+.brush-size {
+            margin-top: 1rem;
+        }
+
+        .brush-label {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .size-btn {
+            width: 32px;
+            height: 32px;
+            border: 2px solid var(--muted);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+        }
+
+        .size-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .size-btn.active {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary);
+        }
+
+        /* Canvas container */
+        .canvas-wrapper {
+            flex: 1;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            overflow: hidden;
+            position: relative;
+        }
+
+        #whiteboard-canvas {
+            width: 100%;
+            height: calc(100vh - 200px);
+            cursor: crosshair;
+            background: #fff;
+        }
+
+        /* Right panel - users */
+        .users-panel {
+            width: 240px;
+            background: var(--card);
+            border-left: 1px solid rgba(255,255,255,0.08);
+            padding: 2rem;
+            height: 100vh;
+        }
+
+        .users-panel h3 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .user-online {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.5rem 0;
+            font-size: 0.75rem;
+            color: var(--text);
+            transition: opacity 0.2s;
+        }
+
+        .user-online:last-child {
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .user-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            border: 2px solid var(--bg);
+        }
+
+        .user-offline .user-dot {
+            background: #64748b;
+        }
+
+        .user-online .user-dot {
+            animation: pulse 2s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.8); }
+        }
+
+        .user-name {
+            font-weight: 500;
+        }
+
+        .user-status {
+            font-size: 0.6rem;
+            opacity: 0.6;
+        }
+
+        /* Count */
+        .user-count {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.7rem;
+            color: var(--muted);
+        }
+
+        /* Export */
+        .export-btn {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.4);
+        }
+
+        .export-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Instructions */
+        .instructions {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.7rem;
+            line-height: 1.6;
+            color: var(--muted);
+        }
+
+        .instructions kbd {
+            background: rgba(99, 102, 241, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 0 2px;
+            font-size: 0.65rem;
+        }
+
+        /* Reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            .color-btn:hover,
+            .size-btn:hover,
+            .eraser-btn:hover {
+                transform: none;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="bg-layer"></div>
+    <div class="noise"></div>
+    
+    <div class="content">
+        <!-- Tools Panel -->
+        <div class="tools-panel">
+            <div class="section-title">
+                <i class="pi pi-palette"></i> COLORS
+            </div>
+            <div class="color-palette" id="color-palette">
+                <!-- Generated by JS -->
+            </div>
+
+            <div class="section-title">
+                <i class="pi pi-erase"></i> ERASER
+            </div>
+            <div class="eraser-btn" id="eraser-btn" title="Erase (E key)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 4H15l-5-5L9 8l8 8-3 5L2 7l5 5z"/>
+                </svg>
+            </div>
+
+            <div class="section-title" style="margin-top: 1rem;">
+                <i class="pi pi-brush"></i> BRUSH SIZE
+            </div>
+            <div class="brush-size">
+                <span class="brush-label">Size:</span>
+                <button class="size-btn active" data-size="2"></button>
+                <button class="size-btn" data-size="4"></button>
+                <button class="size-btn" data-size="6"></button>
+                <button class="size-btn" data-size="8"></button>
+                <button class="size-btn" data-size="12"></button>
+            </div>
+
+            <div class="section-title" style="margin-top: 1.5rem;">
+                <i class="pi pi-image"></i> BACKGROUND
+            </div>
+            <div class="instructions" id="instructions">
+                <kbd>D</kbd>raw<br>
+                <kbd>E</kbd>rase<br>
+                <kbd>Z</kbd> Undo<br>
+                <kbd>Shift</kbd>+<kbd>Z</kbd> Redo<br>
+                <kbd>Esc</kbd> Clear<br>
+                <kbd>↑/↓</kbd> Size
+            </div>
+
+            <button class="export-btn" id="export-btn">
+                📥 Export Artwork
+            </button>
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas-wrapper">
+            <canvas id="whiteboard-canvas"></canvas>
+        </div>
+
+        <!-- Users Panel -->
+        <div class="users-panel">
+            <h3>
+                <i class="pi pi-users"></i> USERS <span id="user-count">0</span>
+            </h3>
+            <div id="user-list">
+                <!-- Generated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Icons -->
+    <script>
+        // Simple inline icons - no external dependencies
+        const icons = {
+            palette: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><circle cx="16" cy="16" r="2"/></svg>`,
+            erase: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H15l-5-5L9 8l8 8-3 5L2 7l5 5z"/></svg>`,
+            users: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="9" r="7"/><path d="M5 15l14-15L5 6z"/></svg>`,
+            brush: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L5 7l5 5h5l5-5-5-5z"/></svg>`
+        };
+    </script>
+
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION & INIT
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomName = urlParams.get('room') || 'hackathon-room-' + Math.floor(Math.random() * 10000);
+        const userName = urlParams.get('name') || 'Artist-' + Math.floor(Math.random() * 10000);
+
+        // ==========================================
+        // DOM ELEMENTS
+        // ==========================================
+        const canvas = document.getElementById('whiteboard-canvas');
+        const ctx = canvas.getContext('2d');
+        const colorPalette = document.getElementById('color-palette');
+        const eraserBtn = document.getElementById('eraser-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const userCount = document.getElementById('user-count');
+        const userList = document.getElementById('user-list');
+        const instructions = document.getElementById('instructions');
+
+        // ==========================================
+        // APP STATE
+        // ==========================================
+        let state = {
+            isDrawing: false,
+            isErasing: false,
+            currentColor: '#ff6b6b',
+            currentSize: 2,
+            lastX: 0,
+            lastY: 0,
+            isShiftPressed: false,
+            room: roomName,
+            userName: userName,
+            cursorPositions: {}
+        };
+
+        // Drawing history for undo/redo
+        let drawingHistory = [];
+        let redoStack = [];
+        const MAX_HISTORY = 100;
+
+        // ==========================================
+        // CANVAS RESIZING
+        // ==========================================
+        function resizeCanvas() {
+            const maxWidth = window.innerWidth - 300;
+            const maxHeight = window.innerHeight - 100;
+            canvas.width = Math.min(maxWidth, 1400);
+            canvas.height = Math.min(maxHeight, 700);
+            canvas.style.width = '100%';
+            canvas.style.height = 'auto';
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ==========================================
+        // COLOR PALETTE
+        // ==========================================
+        const defaultColors = [
+            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4',
+            '#ffe65d', '#ff8c42', '#6c5ce7', '#00ceaf',
+            '#a855f7', '#de3500', '#f97316', '#edf5e1'
+        ];
+
+        function createColorOptions() {
+            colorPalette.innerHTML = '';
+            defaultColors.forEach(color => {
+                const btn = document.createElement('button');
+                btn.className = 'color-btn';
+                btn.style.backgroundColor = color;
+                btn.dataset.color = color;
+                btn.addEventListener('click', () => selectColor(color));
+                colorPalette.appendChild(btn);
+            });
+            selectColor(defaultColors[0]);
+        }
+        createColorOptions();
+
+        function selectColor(color) {
+            document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('selected'));
+            const selectedBtn = document.querySelector(`.color-btn[data-color="${color}"]`);
+            if (selectedBtn) selectedBtn.classList.add('selected');
+            state.currentColor = color;
+            state.isErasing = false;
+            eraserBtn.classList.remove('selected');
+        }
+
+        // ==========================================
+        // BRUSH SIZE
+        // ==========================================
+        function createSizeButtons() {
+            // Buttons already created in HTML, just add active state
+            document.querySelectorAll('.size-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    state.currentSize = parseInt(btn.dataset.size);
+                });
+            });
+        }
+        createSizeButtons();
+
+        // ==========================================
+        // ERASER TOGGLE
+        // ==========================================
+        eraserBtn.addEventListener('click', () => {
+            state.isErasing = !state.isErasing;
+            if (state.isErasing) {
+                eraserBtn.classList.add('selected');
+                selectColor('#ffffff'); // White to erase
+            } else {
+                eraserBtn.classList.remove('selected');
+                // Re-select the last color
+                document.querySelector('.color-btn.selected')?.classList.add('selected');
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Shift') state.isShiftPressed = true;
+            if (e.key === 'Z' && e.ctrlKey) {
+                e.preventDefault();
+                undo();
+            }
+            if (e.key === 'Y' && e.ctrlKey) {
+                e.preventDefault();
+                redo();
+            }
+            if (e.key === 'Escape') {
+                clearCanvas();
+            }
+            if (e.key === 'D'.toLowerCase()) {
+                // Reset to draw mode
+                state.isErasing = false;
+                eraserBtn.classList.remove('selected');
+                document.querySelector('.color-btn.selected')?.classList.add('selected');
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') state.isShiftPressed = false;
+        });
+
+        // ==========================================
+        // DRAWING LOGIC
+        // ==========================================
+        canvas.addEventListener('mousedown', (e) => {
+            state.isDrawing = true;
+            [state.lastX, state.lastY] = [e.offsetX, e.offsetY];
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!state.isDrawing) return;
+
+            const x = e.offsetX;
+            const y = e.offsetY;
+
+            // Draw line
+            drawLine(state.lastX, state.lastY, x, y);
+
+            // Add to history
+            addToHistory('line', { x1: state.lastX, y1: state.lastY, x2: x, y2: y, color: state.currentColor, size: state.currentSize });
+
+            // Update last position
+            state.lastX = x;
+            state.lastY = y;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            state.isDrawing = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            state.isDrawing = false;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            state.isDrawing = true;
+            const touch = e.touches[0];
+            [state.lastX, state.lastY] = [touch.offsetX, touch.offsetY];
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!state.isDrawing) return;
+            const touch = e.touches[0];
+            const x = touch.offsetX;
+            const y = touch.offsetY;
+            drawLine(state.lastX, state.lastY, x, y);
+            addToHistory('line', { x1: state.lastX, y1: state.lastY, x2: x, y2: y, color: state.currentColor, size: state.currentSize });
+            state.lastX = x;
+            state.lastY = y;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            state.isDrawing = false;
+        });
+
+        function drawLine(x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.lineWidth = state.currentSize;
+            ctx.strokeStyle = state.currentColor;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
+
+        function addToHistory(action, data) {
+            // Add to undo stack
+            drawingHistory.push({ action, data, timestamp: Date.now() });
+
+            // Keep history manageable
+            if (drawingHistory.length > MAX_HISTORY) {
+                drawingHistory = drawingHistory.slice(-MAX_HISTORY);
+            }
+
+            // Clear redo stack when new action is added
+            redoStack = [];
+        }
+
+        // ==========================================
+        // SOCKET.IO CLIENT
+        // ==========================================
+        const socket = io();
+
+        socket.on('connect', () => {
+            document.getElementById('connection-status').textContent = 'Connected';
+            socket.emit('join', { room: roomName, name: userName });
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('connection-status').textContent = 'Disconnected';
+        });
+
+        socket.on('new-user', (data) => {
+            addUserToList(data.sid, data.color, data.name, data.initials);
+        });
+
+        socket.on('user-left', (data) => {
+            removeUserFromList(data.sid);
+        });
+
+        socket.on('user-list', (data) => {
+            updateUserList(data.users);
+        });
+
+        socket.on('draw', (data) => {
+            drawRemote(data);
+        });
+
+        socket.on('cursor', (data) => {
+            updateCursor(data.sid, data.x, data.y, data.color, data.name);
+        });
+
+        socket.on('shape-recognized', (data) => {
+            drawShape(data);
+        });
+
+        socket.on('canvas-cleared', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawingHistory = [];
+            redoStack = [];
+        });
+
+        // ==========================================
+        // REMOTE DRAWING
+        // ==========================================
+        function drawRemote(data) {
+            const x = data.x;
+            const y = data.y;
+            const color = data.color || '#ff6b6b';
+            const size = data.size || 2;
+
+            ctx.beginPath();
+            ctx.moveTo(data.lastX || x, data.lastY || y);
+            ctx.lineTo(x, y);
+            ctx.lineWidth = size;
+            ctx.strokeStyle = color;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Add to history if not our own action
+            if (data.userSid !== 'local') {
+                addToHistory('remote_line', data);
+            }
+        }
+
+        // ==========================================
+        // SHAPE RECOGNITION
+        // ==========================================
+        function detectShape(points) {
+            if (!points || points.length < 3) return null;
+
+            const xs = points.map(p => p.x);
+            const ys = points.map(p => p.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+
+            // Circle: width ≈ height
+            if (Math.abs(width - height) < 20 && width > 5) {
+                return 'circle';
+            }
+
+            // Rectangle: significantly different dimensions
+            const ratio = width / height || 1;
+            if (ratio > 1.5 || ratio < 0.67) {
+                return 'rectangle';
+            }
+
+            // Default: freehand
+            return 'freehand';
+        }
+
+        // ==========================================
+        // UNDO/REDO
+        // ==========================================
+        function undo() {
+            if (drawingHistory.length === 0) return;
+
+            const lastAction = drawingHistory.pop();
+            redoStack.push(lastAction);
+
+            // Execute undo based on action type
+            if (lastAction.action === 'line' || lastAction.action === 'remote_line') {
+                // Remove the last line - simplified: clear the whole canvas approach
+                // In a full implementation, we'd track individual lines
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Redraw all lines except the last one
+                const linesToRedraw = drawingHistory.filter(h => h.action !== 'line' && h.action !== 'remote_line').map(h => h.data);
+                // This is simplified - real undo tracks individual strokes
+            } else if (lastAction.action === 'shape') {
+                // Remove last shape
+            }
+
+            // Notify server
+            socket.emit('undo', { user: state.userName });
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+
+            const lastRedo = redoStack.pop();
+            drawingHistory.push(lastRedo);
+
+            // Redo the action
+            if (lastRedo.action === 'line') {
+                drawLine(lastRedo.data.x1, lastRedo.data.y1, lastRedo.data.x2, lastRedo.data.y2);
+            }
+
+            socket.emit('redo', { user: state.userName });
+        }
+
+        // Clear canvas (host only indicator)
+        function clearCanvas() {
+            if (confirm('Clear the entire canvas?')) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawingHistory = [];
+                redoStack = [];
+                socket.emit('clear-canvas', { user: state.userName });
+            }
+        }
+
+        // ==========================================
+        // EXPORT
+        // ==========================================
+        exportBtn.addEventListener('click', () => {
+            const dataURL = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = `whiteboard-${roomName}-${Date.now()}.png`;
+            link.click();
+        });
+
+        // ==========================================
+        // USER LISTS & CURSORS
+        // ==========================================
+        function addUserToList(sid, color, name, initials) {
+            const item = document.createElement('div');
+            item.className = 'user-online';
+            item.innerHTML = `
+                <div class="user-dot" style="background: ${color}"></div>
+                <span class="user-name">${name}</span>
+                <span class="user-status">online</span>
+            `;
+            userList.appendChild(item);
+            updateUserCount();
+        }
+
+        function removeUserFromList(sid) {
+            const items = userList.querySelectorAll('.user-online');
+            if (items.length > 0) {
+                items[items.length - 1].remove();
+            }
+            updateUserCount();
+        }
+
+        function updateUserList(users) {
+            userList.innerHTML = '';
+            users.forEach(user => {
+                addUserToList(user.sid, user.color, user.name, user.initials);
+            });
+        }
+
+        function updateUserCount() {
+            userCount.textContent = userList.children.length;
+        }
+
+        function updateCursor(sid, x, y, color, name) {
+            state.cursorPositions[sid] = { x, y, color, name };
+
+            // Simple cursor display - could be enhanced
+            const cursorDot = document.createElement('div');
+            cursorDot.style.position = 'absolute';
+            cursorDot.style.width = '6px';
+            cursorDot.style.height = '6px';
+            cursorDot.style.borderRadius = '50%';
+            cursorDot.style.background = color;
+            cursorDot.style.left = x - 3 + 'px';
+            cursorDot.style.top = y - 3 + 'px';
+            cursorDot.style.pointerEvents = 'none';
+            cursorDot.style.zIndex = '100';
+            cursorDot.title = name;
+
+            // Remove existing cursor for this user
+            const existing = document.querySelector(`.cursor-[data-sid="${sid}"]);
+            if (existing) existing.remove();
+
+            canvas.appendChild(cursorDot);
+            cursorDot.dataset.sid = sid;
+
+            // Animate pulse
+            cursorDot.style.animation = 'none';
+            setTimeout(() => cursorDot.style.animation = 'pulse 2s ease infinite', 10);
+        }
+
+        // Initial draw on load to show existing lines
+        socket.on('ready', () => {
+            socket.emit('join', { room: roomName, name: userName });
+        });
+
+        // ==========================================
+        // INITIALIZE
+        // ==========================================
+        console.log(`Whiteboard initialized - Room: ${roomName}, User: ${userName}`);
+    </script>
+</body>
+</html>
